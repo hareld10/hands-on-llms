@@ -76,7 +76,18 @@ def run_local(
             }
             output_context = bot.finbot_chain.chains[0].run(input_payload)
             response = bot.answer(**input_payload)
+            score = evaluate_w_ragas(
+                query=elem["question"],
+                context=output_context.split('\n'),
+                output=response,
+                ground_truth=elem["response"],
+                metrics=metrics
+            )
+            scores.append(score)
             logger.info("Score=%s", evaluate_w_ragas(query=elem["question"], context=output_context.split('\n'), output=response, ground_truth=elem["response"], metrics=metrics))
+    
+    mean_score = {metric: sum([s[metric] for s in scores]) / len(scores) for metric in scores[0]}
+    logger.info("Mean Score=%s", mean_score)
 
     return response
 
