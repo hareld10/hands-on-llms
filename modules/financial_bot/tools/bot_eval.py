@@ -90,7 +90,7 @@ def run_local(
                 "context": output_context,
                 "gt": elem["response"],
                 "response": response,
-                "metrics": ragas_metrics
+                "metrics": score
             })
             logger.info("Score=%s", evaluate_w_ragas(query=elem["question"], context=output_context.split('\n'), output=response, ground_truth=elem["response"], metrics=metrics))
     
