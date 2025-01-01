@@ -67,7 +67,7 @@ def run_local(
     ]
 
     scores = []
-    
+
     with open(testset_path, "r") as f:
         data = json.load(f)
         for elem in data:
@@ -85,10 +85,18 @@ def run_local(
                 ground_truth=elem["response"],
                 metrics=metrics
             )
-            scores.append(score)
+            scores.append({
+                "question": elem["question"],
+                "context": output_context,
+                "gt": elem["response"],
+                "response": response,
+                "metrics": ragas_metrics
+            })
             logger.info("Score=%s", evaluate_w_ragas(query=elem["question"], context=output_context.split('\n'), output=response, ground_truth=elem["response"], metrics=metrics))
     
-    mean_score = {metric: sum([s[metric] for s in scores]) / len(scores) for metric in scores[0]}
+    with open(f'results_{datetime.now().strftime("%Y%m%d-%H%M%S")}.json', "w") as f:
+        json.dump(scores, f)
+
     logger.info("Mean Score=%s", mean_score)
 
     return response
