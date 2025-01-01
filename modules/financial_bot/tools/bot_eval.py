@@ -66,6 +66,8 @@ def run_local(
         faithfulness
     ]
 
+    scores = []
+    
     with open(testset_path, "r") as f:
         data = json.load(f)
         for elem in data:
