@@ -1,5 +1,7 @@
 import time
 from typing import Any, Dict, List, Optional
+import os
+import json
 
 import qdrant_client
 from langchain import chains
@@ -16,6 +18,9 @@ from unstructured.cleaners.core import (
 
 from financial_bot.embeddings import EmbeddingModelSingleton
 from financial_bot.template import PromptTemplate
+from tavily import TavilyClient
+import ast
+
 
 
 class StatelessMemorySequentialChain(chains.SequentialChain):
@@ -76,7 +81,78 @@ class StatelessMemorySequentialChain(chains.SequentialChain):
             results[self.memory.memory_key] = ""
 
         return results
+    
+from typing import Any, Dict, List
+from langchain.chains.base import Chain
+import openai
 
+class DecisionChain(Chain):
+    """
+    A chain that uses OpenAI GPT to decide whether to use the vector store or the web search.
+    """
+
+    @property
+    def input_keys(self) -> List[str]:
+        return ["question"]
+
+    @property
+    def output_keys(self) -> List[str]:
+        return ["decision"]
+
+    def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        question = inputs["question"]
+        decision_prompt = f"""You are an expert at routing a user question to a vectorstore or web search.
+                    The vectorstore contains documents that are news on finance, investing, and economics. The web search can find information on any topic.
+                    Use the vectorstore for questions on these topics. Otherwise, use web-search. Answer only with 'vectorstore' or 'web-search'."""
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": decision_prompt},
+                {"role": "user", "content": question}
+            ],
+            max_tokens=10,
+            temperature=0,
+        )
+
+        decision = response.choices[0].message['content'].strip().lower()
+        print('Decision:', decision)
+        return {"decision": decision}
+
+
+from typing import Any, Dict, List
+import requests
+
+class WebSearchChain(Chain):
+    """
+    A chain that uses a web search API to retrieve context for a given query.
+    """
+
+    tavily_api_key: str = os.getenv("TAVILY_API_KEY")
+    
+    
+
+    @property
+    def input_keys(self) -> List[str]:
+        return ["question"]
+
+    @property
+    def output_keys(self) -> List[str]:
+        return ["context"]
+
+    def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        question = inputs["question"]
+        print('Question:', question)
+        tavily_client = TavilyClient(api_key=self.tavily_api_key)
+        results = tavily_client.get_search_context(query=question, max_results=2, max_tokens=500)
+        results_json = json.loads(results)
+        a = ast.literal_eval(results_json)
+        parsed_data = [json.loads(item) for item in a]
+        
+
+        context = "\n".join([item['content'] for item in parsed_data])
+        print('Context from tavily:', context)
+        return {"context": context}
 
 class ContextExtractorChain(Chain):
     """
@@ -93,12 +169,18 @@ class ContextExtractorChain(Chain):
         The vector store to search for matches.
     vector_collection : str
         The name of the collection to search in the vector store.
+    decision_chain : DecisionChain
+        The chain that decides whether to use the vector store or web search.
+    web_search_chain : WebSearchChain
+        The chain that uses a web search API to retrieve context for a given query.
     """
 
     top_k: int = 1
     embedding_model: EmbeddingModelSingleton
     vector_store: qdrant_client.QdrantClient
     vector_collection: str
+    decision_chain: DecisionChain
+    web_search_chain: WebSearchChain
 
     @property
     def input_keys(self) -> List[str]:
@@ -109,30 +191,38 @@ class ContextExtractorChain(Chain):
         return ["context"]
 
     def _call(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        _, quest_key = self.input_keys
-        question_str = inputs[quest_key]
+        # Call the DecisionChain to decide whether to use web search or vector store
+        decision = self.decision_chain._call({"question": inputs["question"]})["decision"]
 
-        cleaned_question = self.clean(question_str)
-        # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
-        # pass them through the model and average the embeddings.
-        cleaned_question = cleaned_question[: self.embedding_model.max_input_length]
-        embeddings = self.embedding_model(cleaned_question)
+        if decision == "web-search1":
+            # Use WebSearchChain to get context
+            context = self.web_search_chain._call(inputs)["context"]
+        else:
+            # Use original context extraction logic
+            _, quest_key = self.input_keys
+            question_str = inputs[quest_key]
 
-        # TODO: Using the metadata, use the filter to take into consideration only the news from the last 24 hours
-        # (or other time frame).
-        matches = self.vector_store.search(
-            query_vector=embeddings,
-            k=self.top_k,
-            collection_name=self.vector_collection,
-        )
+            cleaned_question = self.clean(question_str)
+            cleaned_question = self.clean(question_str)
+            # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
+            # pass them through the model and average the embeddings.
+            cleaned_question = self.clean(question_str)
+            # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
+            # pass them through the model and average the embeddings.
+            cleaned_question = cleaned_question[: self.embedding_model.max_input_length]
+            embeddings = self.embedding_model(cleaned_question)
 
-        context = ""
-        for match in matches:
-            context += match.payload["summary"] + "\n"
+            matches = self.vector_store.search(
+                query_vector=embeddings,
+                k=self.top_k,
+                collection_name=self.vector_collection,
+            )
 
-        return {
-            "context": context,
-        }
+            context = ""
+            for match in matches:
+                context += match.payload["summary"] + "\n"
+            print('Context from vector store:', context)
+        return {"context": context}
 
     def clean(self, question: str) -> str:
         """

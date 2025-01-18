@@ -11,6 +11,8 @@ from financial_bot.chains import (
     ContextExtractorChain,
     FinancialBotQAChain,
     StatelessMemorySequentialChain,
+    DecisionChain,
+    WebSearchChain
 )
 from financial_bot.embeddings import EmbeddingModelSingleton
 from financial_bot.handlers import CometLLMMonitoringHandler
@@ -115,13 +117,16 @@ class FinancialBot:
         [about: str][question:str] + [context: str] > FinancialChain >
         [answer: str]
         """
-
+        decision_chain = DecisionChain()
+        web_search_chain = WebSearchChain(api_key=os.getenv("TAVILY_API_KEY"))
         logger.info("Building 1/3 - ContextExtractorChain")
         context_retrieval_chain = ContextExtractorChain(
             embedding_model=self._embd_model,
             vector_store=self._qdrant_client,
             vector_collection=self._vector_collection_name,
             top_k=self._vector_db_search_topk,
+            decision_chain=decision_chain,
+            web_search_chain=web_search_chain,
         )
 
         logger.info("Building 2/3 - FinancialBotQAChain")
