@@ -194,34 +194,34 @@ class ContextExtractorChain(Chain):
         # Call the DecisionChain to decide whether to use web search or vector store
         decision = self.decision_chain._call({"question": inputs["question"]})["decision"]
 
-        # if decision == "web-search":
-        #     # Use WebSearchChain to get context
-        #     context = self.web_search_chain._call(inputs)["context"]
-        # else:
-        # Use original context extraction logic
-        _, quest_key = self.input_keys
-        question_str = inputs[quest_key]
+        if decision == "web-search":
+            # Use WebSearchChain to get context
+            context = self.web_search_chain._call(inputs)["context"]
+        else:
+            # Use original context extraction logic
+            _, quest_key = self.input_keys
+            question_str = inputs[quest_key]
 
-        cleaned_question = self.clean(question_str)
-        cleaned_question = self.clean(question_str)
-        # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
-        # pass them through the model and average the embeddings.
-        cleaned_question = self.clean(question_str)
-        # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
-        # pass them through the model and average the embeddings.
-        cleaned_question = cleaned_question[: self.embedding_model.max_input_length]
-        embeddings = self.embedding_model(cleaned_question)
+            cleaned_question = self.clean(question_str)
+            cleaned_question = self.clean(question_str)
+            # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
+            # pass them through the model and average the embeddings.
+            cleaned_question = self.clean(question_str)
+            # TODO: Instead of cutting the question at 'max_input_length', chunk the question in 'max_input_length' chunks,
+            # pass them through the model and average the embeddings.
+            cleaned_question = cleaned_question[: self.embedding_model.max_input_length]
+            embeddings = self.embedding_model(cleaned_question)
 
-        matches = self.vector_store.search(
-            query_vector=embeddings,
-            k=self.top_k,
-            collection_name=self.vector_collection,
-        )
+            matches = self.vector_store.search(
+                query_vector=embeddings,
+                k=self.top_k,
+                collection_name=self.vector_collection,
+            )
 
-        context = ""
-        for match in matches:
-            context += match.payload["summary"] + "\n"
-        print('Context from vector store:', context)
+            context = ""
+            for match in matches:
+                context += match.payload["summary"] + "\n"
+            print('Context from vector store:', context)
 
         return {"context": context}
 

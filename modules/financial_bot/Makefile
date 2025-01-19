@@ -54,7 +54,7 @@ eval_bot:
 	@echo "Evaluating financial_bot..."
 
 	poetry run python -m tools.bot_eval \
-		--testset_path "../training_pipeline/dataset/combined_dataset.json"
+		--testset_path "../training_pipeline/dataset/new_data.json"
 
 
 # === Beam ===
