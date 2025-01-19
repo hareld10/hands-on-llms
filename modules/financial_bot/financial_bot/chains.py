@@ -194,7 +194,7 @@ class ContextExtractorChain(Chain):
         # Call the DecisionChain to decide whether to use web search or vector store
         decision = self.decision_chain._call({"question": inputs["question"]})["decision"]
 
-        if decision == "web-search1":
+        if decision == "web-search":
             # Use WebSearchChain to get context
             context = self.web_search_chain._call(inputs)["context"]
         else:
